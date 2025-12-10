@@ -231,7 +231,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 if (name == null || name.length() == 0) {
                     name = deviceAddress;
                 }
-                name += "-" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + ".log";
+                name += "-" + new SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + ".log";
                 intent.putExtra(Intent.EXTRA_TITLE, name);
                 intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, MediaStore.Downloads.EXTERNAL_CONTENT_URI);
                 // Start the activity to let the user choose a location and save the file
