@@ -20,4 +20,9 @@
         android:title="Notification if App in background"
         android:checkable="true"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/writeLog"
+        android:title="Write to log file"
+        android:checkable="true"
+        app:showAsAction="never" />
 </menu>

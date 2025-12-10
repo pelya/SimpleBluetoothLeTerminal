@@ -12,6 +12,9 @@ import android.content.ServiceConnection;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -30,8 +33,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import java.io.IOException;
+import java.io.FileOutputStream;
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.text.SimpleDateFormat;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -39,6 +45,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private String deviceAddress;
     private SerialService service;
+    private FileOutputStream logFile;
+    private ParcelFileDescriptor logPFD;
+    private static final int SAVE_LOG_FILE_DIALOG_ID = 100;
 
     private TextView receiveText;
     private TextView sendText;
@@ -66,6 +75,15 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         if (connected != Connected.False)
             disconnect();
         getActivity().stopService(new Intent(getActivity(), SerialService.class));
+        if (logFile != null) {
+            try {
+                logFile.close();
+                logPFD.close();
+            } catch (IOException e) {
+                status("cannot write log file: " + e.getMessage());
+            }
+            logFile = null;
+        }
         super.onDestroy();
     }
 
@@ -156,6 +174,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             menu.findItem(R.id.backgroundNotification).setChecked(true);
             menu.findItem(R.id.backgroundNotification).setEnabled(false);
         }
+        menu.findItem(R.id.writeLog).setChecked(logFile != null);
     }
 
     @Override
@@ -192,11 +211,55 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 }
             }
             return true;
+        } else if (id == R.id.writeLog) {
+            if (logFile != null) {
+                try {
+                    logFile.close();
+                    logPFD.close();
+                } catch (IOException e) {
+                    status("cannot write log file: " + e.getMessage());
+                }
+                logFile = null;
+                item.setChecked(false);
+            } else {
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("text/plain");
+                // Suggest a file name
+                String name = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(deviceAddress).getName();
+                if (name == null || name.length() == 0) {
+                    name = deviceAddress;
+                }
+                name += "-" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + ".log";
+                intent.putExtra(Intent.EXTRA_TITLE, name);
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, MediaStore.Downloads.EXTERNAL_CONTENT_URI);
+                // Start the activity to let the user choose a location and save the file
+                startActivityForResult(intent, SAVE_LOG_FILE_DIALOG_ID);
+                item.setChecked(true);
+            }
+            return true;
         } else {
             return super.onOptionsItemSelected(item);
         }
     }
 
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent resultData) {
+        if (requestCode == SAVE_LOG_FILE_DIALOG_ID && resultCode == Activity.RESULT_OK && resultData != null) {
+            try {
+                if (logFile != null) {
+                    logFile.close();
+                    logPFD.close();
+                }
+                logFile = null;
+                // Perform operations on the document using its URI.
+                logPFD = getActivity().getContentResolver().openFileDescriptor(resultData.getData(), "w");
+                logFile = new FileOutputStream(logPFD.getFileDescriptor());
+            } catch (IOException e) {
+                status("cannot write log file: " + e.getMessage());
+            }
+        }
+    }
     /*
      * Serial + UI
      */
@@ -240,6 +303,12 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             receiveText.append(spn);
             service.write(data);
+            if (logFile != null) {
+                try {
+                    logFile.write(data);
+                } catch (IOException e) {
+                }
+            }
         } catch (Exception e) {
             onSerialIoError(e);
         }
@@ -269,8 +338,16 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 }
                 spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
             }
+            if (logFile != null) {
+                try {
+                    logFile.write(data);
+                } catch (IOException e) {
+                    status("cannot write log file: " + e.getMessage());
+                }
+            }
         }
         receiveText.append(spn);
+
     }
 
     private void status(String str) {
