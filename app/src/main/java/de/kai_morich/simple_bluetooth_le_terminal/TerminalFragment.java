@@ -52,6 +52,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private TextView receiveText;
     private TextView sendText;
     private TextUtil.HexWatcher hexWatcher;
+    private static final int MAX_RECEIVE_TEXT_VIEW_LENGTH = 16000; // roughly length of this file
 
     private Connected connected = Connected.False;
     private boolean initialStart = true;
@@ -255,6 +256,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 // Perform operations on the document using its URI.
                 logPFD = getActivity().getContentResolver().openFileDescriptor(resultData.getData(), "w");
                 logFile = new FileOutputStream(logPFD.getFileDescriptor());
+                logFile.write(receiveText.getText().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } catch (IOException e) {
                 status("cannot write log file: " + e.getMessage());
             }
@@ -345,6 +347,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                     status("cannot write log file: " + e.getMessage());
                 }
             }
+        }
+        if (receiveText.getText().length() > MAX_RECEIVE_TEXT_VIEW_LENGTH) {
+            receiveText.setText(receiveText.getText().subSequence(
+                receiveText.getText().length() - MAX_RECEIVE_TEXT_VIEW_LENGTH,
+                receiveText.getText().length()));
         }
         receiveText.append(spn);
 
