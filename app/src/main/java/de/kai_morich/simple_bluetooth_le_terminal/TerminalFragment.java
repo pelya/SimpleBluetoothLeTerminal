@@ -59,6 +59,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private boolean hexEnabled = false;
     private boolean pendingNewline = false;
     private String newline = TextUtil.newline_crlf;
+    private boolean pauseScrolling = false;
+    private ArrayDeque<byte[]> pauseScrollingBuffer = new ArrayDeque<byte[]>();
 
     /*
      * Lifecycle
@@ -150,6 +152,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         receiveText = view.findViewById(R.id.receive_text);                          // TextView performance decreases with number of spans
         receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
+        receiveText.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(View v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+                if (!v.canScrollVertically(1)) {
+                    pauseScrolling = false;
+                    receive(new ArrayDeque<byte[]>());
+                } else {
+                    pauseScrolling = true;
+                }
+            }
+        });
 
         sendText = view.findViewById(R.id.send_text);
         hexWatcher = new TextUtil.HexWatcher(sendText);
@@ -182,6 +195,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
         if (id == R.id.clear) {
+            pauseScrolling = false;
+            receive(new ArrayDeque<byte[]>());
             receiveText.setText("");
             return true;
         } else if (id == R.id.newline) {
@@ -262,6 +277,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
         }
     }
+
     /*
      * Serial + UI
      */
@@ -317,6 +333,16 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private void receive(ArrayDeque<byte[]> datas) {
+        if (pauseScrolling) {
+            pauseScrollingBuffer.addAll(datas);
+            return;
+        }
+        if (!pauseScrollingBuffer.isEmpty()) {
+            ArrayDeque<byte[]> joined = new ArrayDeque<byte[]>(pauseScrollingBuffer);
+            pauseScrollingBuffer.clear();
+            joined.addAll(datas);
+            datas = joined;
+        }
         SpannableStringBuilder spn = new SpannableStringBuilder();
         for (byte[] data : datas) {
             if (hexEnabled) {
